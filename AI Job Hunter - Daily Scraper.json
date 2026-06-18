@@ -1,0 +1,549 @@
+{
+  "name": "AI Job Hunter - Daily Scraper",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "d33221d0-5671-41c2-aa0f-8bfaa723a70c",
+      "name": "Daily at 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "neighbourhood_group",
+              "value": "Manhattan",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "room_type",
+              "value": "Entire home/apt",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "latitude",
+              "value": 40.74,
+              "type": "number"
+            },
+            {
+              "id": "4",
+              "name": "longitude",
+              "value": -73.99,
+              "type": "number"
+            },
+            {
+              "id": "5",
+              "name": "budget_sensitivity",
+              "value": "medium",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "target_market",
+              "value": "tourists",
+              "type": "string"
+            },
+            {
+              "id": "08b15a11-1afd-4882-b46a-cd83d21fac53",
+              "name": "host_rating",
+              "value": 4.5,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9c0cf356-5408-4a1a-898a-6e52fe95425a",
+      "name": "Set Search Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const listings = $input.all().map(item => item.json);\n\nif (listings.length === 0) {\n  return [{\n    json: {\n      marketStats: {\n        avgPrice: 0,\n        medianPrice: 0,\n        minPrice: 0,\n        maxPrice: 0,\n        competitorCount: 0\n      },\n      recommendedPrice: 0,\n      monthlyRevenue: 0\n    }\n  }];\n}\n\nconst prices = listings\n  .map(l => parseFloat(l.price))\n  .filter(p => !isNaN(p) && p > 0)\n  .slice(0, 3000); \n\nprices.sort((a, b) => a - b);\n\nconst q1 = prices[Math.floor(prices.length * 0.25)];\nconst q3 = prices[Math.floor(prices.length * 0.75)];\nconst iqr = q3 - q1;\n\nconst lowerBound = q1 - 1.5 * iqr;\nconst upperBound = q3 + 1.5 * iqr;\n\nconst filteredPrices = prices.filter(p => p >= lowerBound && p <= upperBound);\n\nconst avgPrice = filteredPrices.reduce((a, b) => a + b, 0) / filteredPrices.length;\nconst medianPrice = filteredPrices[Math.floor(filteredPrices.length / 2)];\nconst minPrice = Math.min(...filteredPrices);\nconst maxPrice = Math.max(...filteredPrices);\n\nconst recommendedPrice = Math.round(medianPrice);\n\nconst monthlyRevenue = Math.round(recommendedPrice * 30 * 0.7);\n\nreturn [{\n  json: {\n    marketStats: {\n      avgPrice: Math.round(avgPrice),\n      medianPrice: Math.round(medianPrice),\n      minPrice: Math.round(minPrice),\n      maxPrice: Math.round(maxPrice),\n      competitorCount: listings.length\n    },\n    recommendedPrice,\n    monthlyRevenue\n  }\n}];"
+      },
+      "id": "85330052-6cd1-4817-b6e0-c1035a35a9ae",
+      "name": "Calculate Market Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Here is the market data:\n\nMedian price: {{ $json.marketStats.medianPrice }}\nAverage price: {{ $json.marketStats.avgPrice }}\nMin price: {{ $json.marketStats.minPrice }}\nMax price: {{ $json.marketStats.maxPrice }}\nCompetitors: {{ $json.marketStats.competitorCount }}\n\nHere is the target listing:\n\n{{ JSON.stringify($(\"Set Search Parameters\").first().json) }}\n\nProvide a pricing recommendation.",
+        "options": {
+          "systemMessage": "You are an Airbnb pricing expert.\n\nUse the provided market data and listing details to estimate an optimal nightly price.\n\nRules:\n- Start from the median market price\n- Apply adjustments based on:\n  • host rating\n  • budget sensitivity\n  • target market\n\nAdjustments:\n- Rating ≥ 4.5 → +10% to +20%\n- Rating 4.0–4.5 → +0% to +10%\n- Rating < 4.0 → -10% to -20%\n\n- Budget sensitivity:\n  • high → -10%\n  • medium → 0%\n  • low → +10%\n\n- Target market:\n  • tourists → +5–15%\n  • business → +0–5%\n  • locals → 0 or slight decrease\n\nConstraints:\n- Final price must stay within ±20% of median price\n\nOutput ONLY a valid JSON (no text outside JSON):\n\n{\n  \"finalPrice\": number,\n  \"adjustments\": \"text\",\n  \"summary\": \"text\"\n}\n\nDo not return anything outside JSON."
+        }
+      },
+      "id": "5e3c482e-c0cf-4431-b2e0-d0121a3abbf9",
+      "name": "AI Pricing Strategy",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1584,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "33eed71e-b48f-4baa-8afb-204054adc68a",
+      "name": "OpenAI GPT-5",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1664,
+        528
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "haPRqCq1JQN3E6tU",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "neighbourhood",
+              "value": "={{ $(\"Set Search Parameters\").first().json.neighbourhood_group }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "roomType",
+              "value": "={{ $(\"Set Search Parameters\").first().json.room_type }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "recommendedPrice",
+              "value": "={{ $(\"Parse AI Output\").first().json.finalPrice }}",
+              "type": "number"
+            },
+            {
+              "id": "4",
+              "name": "monthlyRevenue",
+              "value": "={{ Math.round($(\"Parse AI Output\").first().json.finalPrice * 30 * 0.7) }}",
+              "type": "number"
+            },
+            {
+              "id": "5",
+              "name": "avgPrice",
+              "value": "={{ $(\"Calculate Market Stats\").item.json.marketStats.avgPrice }}",
+              "type": "number"
+            },
+            {
+              "id": "6",
+              "name": "competitorCount",
+              "value": "={{ $(\"Calculate Market Stats\").item.json.marketStats.competitorCount }}",
+              "type": "number"
+            },
+            {
+              "id": "7",
+              "name": "aiStrategy",
+              "value": "={{ $(\"Parse AI Output\").first().json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "fa0168ff-0cab-403d-a18d-1b89f919ca59",
+              "name": "details",
+              "value": "={{ $(\"Parse AI Output\").first().json.adjustments }}",
+              "type": "string"
+            },
+            {
+              "id": "8",
+              "name": "date",
+              "value": "={{ $now.toFormat(\"dd/MM/yyyy\") }}",
+              "type": "string"
+            },
+            {
+              "id": "9",
+              "name": "dataSource",
+              "value": "Kaggle NYC 2019",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b81594a3-d426-47c1-ba74-bf16f961f0d1",
+      "name": "Prepare Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2064,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1YnnVgXdjZaTpsDUdNJ_zX1NrRVPQkWQJ4WfgvDwo2LE",
+          "mode": "list",
+          "cachedResultName": "Pricing ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YnnVgXdjZaTpsDUdNJ_zX1NrRVPQkWQJ4WfgvDwo2LE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Feuille 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YnnVgXdjZaTpsDUdNJ_zX1NrRVPQkWQJ4WfgvDwo2LE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "neighbourhood",
+              "displayName": "neighbourhood",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "roomType",
+              "displayName": "roomType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recommendedPrice",
+              "displayName": "recommendedPrice",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monthlyRevenue",
+              "displayName": "monthlyRevenue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "avgPrice",
+              "displayName": "avgPrice",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "competitorCount",
+              "displayName": "competitorCount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "aiStrategy",
+              "displayName": "aiStrategy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "13025c7e-96eb-4630-933c-975a4c176e5b",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2304,
+        192
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cKQvGDZqdRUOzg13",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "matis23.ch@gmail.com",
+        "subject": "=📊 Analyse Airbnb - {{ $(\"Prepare Report\").first().json.neighbourhood }} - {{ $(\"Prepare Report\").first().json.date }}",
+        "message": "=<!DOCTYPE html>\n<html>\n<body style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n  \n  <h1 style=\"color: #FF5A5F;\">\n    📊 Analyse Airbnb - New York {{ $(\"Prepare Report\").first().json.neighbourhood }}\n  </h1>\n\n  <div style=\"background: #f7f7f7; padding: 20px; border-radius: 8px; margin: 20px 0;\">\n    <h2 style=\"color: #484848; margin-top: 0;\">💰 Prix recommandé</h2>\n    \n    <p style=\"font-size: 32px; font-weight: bold; color: #FF5A5F; margin: 10px 0;\">\n      {{ $(\"Prepare Report\").first().json.recommendedPrice }}$ / nuit\n    </p>\n\n    <p style=\"color: #767676;\">\n      Prix moyen du marché : {{ $(\"Prepare Report\").first().json.avgPrice }}$\n    </p>\n\n    <p style=\"color: #767676;\">\n      Concurrents analysés : {{ $(\"Prepare Report\").first().json.competitorCount }}\n    </p>\n  </div>\n\n  <div style=\"background: #f7f7f7; padding: 20px; border-radius: 8px; margin: 20px 0;\">\n    <h2 style=\"color: #484848; margin-top: 0;\">📈 Revenu estimé</h2>\n    \n    <p style=\"font-size: 28px; font-weight: bold; color: #008489;\">\n      {{ $(\"Prepare Report\").first().json.monthlyRevenue }}$ / mois\n    </p>\n\n    <p style=\"color: #767676;\">\n      Basé sur un taux d'occupation de 70%\n    </p>\n  </div>\n\n  <div style=\"background: #f7f7f7; padding: 20px; border-radius: 8px; margin: 20px 0;\">\n    <h2 style=\"color: #484848;\">🎯 Stratégie IA</h2>\n    \n    <p style=\"color: #484848; line-height: 1.6;\">\n      {{ $(\"Prepare Report\").first().json.aiStrategy }}\n    </p>\n  </div>\n\n  <div style=\"background: #f7f7f7; padding: 20px; border-radius: 8px; margin: 20px 0;\">\n    <h2 style=\"color: #484848;\">🔍 Détails du calcul</h2>\n    \n    <p style=\"color: #484848; line-height: 1.6;\">\n      {{ $(\"Prepare Report\").first().json.details }}\n    </p>\n  </div>\n\n  <div style=\"margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #767676; font-size: 12px;\">\n    <p>Quartier : {{ $(\"Prepare Report\").first().json.neighbourhood }}</p>\n    <p>Type de bien : {{ $(\"Prepare Report\").first().json.roomType }}</p>\n    <p>Date d'analyse : {{ $(\"Prepare Report\").first().json.date }}</p>\n    <p style=\"margin-top: 20px;\">Rapport généré automatiquement par n8n</p>\n  </div>\n\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "952b4d84-ff97-4dc2-ad94-cf641d3feb9c",
+      "name": "Send Email Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2304,
+        400
+      ],
+      "webhookId": "93da485a-672a-4050-a169-39426577655c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0d8mymp6o6dTy7yw",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://raw.githubusercontent.com/MvT1s/projetAirbnbPricing/refs/heads/main/AB_NYC_2019.csv",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "c6f1dd5e-6fc6-4845-9ae1-4484703db1c0",
+      "name": "Load Kaggle Dataset",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        688,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "delimiter": ",",
+          "encoding": "utf-8",
+          "headerRow": true,
+          "includeEmptyCells": false
+        }
+      },
+      "id": "3ac120f8-2f21-44d1-bc0b-4fcce421998e",
+      "name": "Parse CSV Data",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nfor (const item of $input.all()) {\n  const d = item.json;\n\n  if (\n    d.neighbourhood_group &&\n    d.room_type &&\n    d.price\n  ) {\n    output.push({\n      json: {\n        neighbourhood_group: d.neighbourhood_group,\n        room_type: d.room_type,\n        price: parseFloat(d.price)\n      }\n    });\n  }\n\n  if (output.length >= 2000) break;\n}\n\nreturn output;"
+      },
+      "id": "b1282aa6-48aa-4bee-bb27-0fddff04162f",
+      "name": "Filter by Criteria",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.output;\n\nlet parsed;\n\ntry {\n  parsed = JSON.parse(raw);\n} catch (e) {\n  parsed = {\n    finalPrice: null,\n    summary: \"Erreur parsing IA\",\n    adjustments: raw\n  };\n}\n\nreturn [{ json: parsed }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        304
+      ],
+      "id": "83fbc4e7-344c-4d59-9f82-120e9325d327",
+      "name": "Parse AI Output"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily at 9 AM": {
+      "main": [
+        [
+          {
+            "node": "Set Search Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Search Parameters": {
+      "main": [
+        [
+          {
+            "node": "Load Kaggle Dataset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Market Stats": {
+      "main": [
+        [
+          {
+            "node": "AI Pricing Strategy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Pricing Strategy": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Pricing Strategy",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Report": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Kaggle Dataset": {
+      "main": [
+        [
+          {
+            "node": "Parse CSV Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CSV Data": {
+      "main": [
+        [
+          {
+            "node": "Filter by Criteria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter by Criteria": {
+      "main": [
+        [
+          {
+            "node": "Calculate Market Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Output": {
+      "main": [
+        [
+          {
+            "node": "Prepare Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "af035ad4-a91f-43d7-84b9-1ad028a62579",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "227a0f3141ca34ea139f5a03967db090bafe9715f456fad28c09cf1cbb57978f"
+  },
+  "nodeGroups": [],
+  "id": "qg35gind08swlqtE",
+  "tags": []
+}
