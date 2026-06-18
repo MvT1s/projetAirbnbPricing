@@ -1,0 +1,93 @@
+# 🏠 Airbnb Pricing AI - NYC
+
+## 📌 Présentation
+
+Ce projet est un outil de pricing automatisé qui permet d’estimer le prix optimal par nuit d’un logement Airbnb à New York.
+
+Il combine :
+- Analyse de données (dataset Airbnb)
+- Logique de pricing basée sur le marché
+- Ajustements via IA (OpenAI)
+- Automatisation avec n8n
+
+---
+
+## ⚙️ Fonctionnement
+
+### 1. Traitement des données
+- Chargement d’un dataset Airbnb (CSV)
+- Filtrage des logements selon :
+  - quartier (neighbourhood_group)
+  - type de logement (room_type)
+
+---
+
+### 2. Analyse du marché
+Calcul des indicateurs :
+- prix moyen
+- prix médian
+- prix minimum / maximum
+
+Suppression des valeurs aberrantes (outliers) via la méthode IQR.
+
+---
+
+### 3. Estimation du prix de base
+- Utilisation du prix médian comme référence
+
+---
+
+### 4. Ajustement avec IA
+L’IA ajuste le prix en fonction de :
+- note de l’hôte
+- sensibilité au prix (budget)
+- type de clientèle cible
+
+Règles appliquées :
+- Note ≥ 4.5 → +10% à +20%
+- Budget :
+  - élevé → -10%
+  - moyen → 0%
+  - faible → +10%
+- Marché :
+  - touristes → +5% à +15%
+
+---
+
+### 5. Estimation du revenu
+Formule : prix × 30 jours × 70% taux d’occupation
+
+---
+
+## 🤖 Exemple de résultat
+
+- Prix recommandé : **139€ / nuit**
+- Revenu mensuel estimé : **~2900€**
+- Explication :
+  > Le prix est ajusté à la hausse en raison d’une forte demande touristique et d’une bonne note de l’hôte.
+
+---
+
+## 🧰 Technologies utilisées
+
+- n8n (automatisation)
+- OpenAI API (IA)
+- JavaScript (traitement des données)
+- Dataset CSV (Airbnb NYC)
+
+---
+
+## 🚀 Fonctionnalités
+
+- Estimation dynamique des prix
+- Analyse du marché en temps réel (pas dans mon cas car ancien dataset)
+- Ajustement intelligent via IA
+- Génération automatique d’un rapport (email)
+
+---
+
+## 📊 Améliorations possibles
+
+- Prise en compte de la saisonnalité
+- Score de localisation (distance centre)
+- Taux d’occupation dynamique
